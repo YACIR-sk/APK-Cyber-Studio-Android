@@ -126,3 +126,10 @@ git add .gitignore
 git commit --amend -m "Initial commit - APK Cyber Studio Native"
 git push -u origin master --force
 exit
+mv APK-Cyber-Studio-Android/* .
+mv APK-Cyber-Studio-Android/.github .
+rm -rf APK-Cyber-Studio-Android
+git add .
+git commit -m "Fix repository structure for GitHub Actions"
+git push origin master
+exit
