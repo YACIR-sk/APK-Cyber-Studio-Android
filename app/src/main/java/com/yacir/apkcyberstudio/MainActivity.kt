@@ -2,6 +2,7 @@ package com.yacir.apkcyberstudio
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
 
@@ -25,6 +28,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvConsole: TextView
     private lateinit var scrollConsole: ScrollView
     private var isDarkMode = true
+
+    private val TERMUX_PERMISSION = "com.termux.permission.RUN_COMMAND"
 
     private val openFileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -45,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         checkStoragePermission()
+        checkTermuxPermission()
 
         etPath = findViewById(R.id.etPath)
         tvConsole = findViewById(R.id.tvConsole)
@@ -117,6 +123,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkTermuxPermission() {
+        if (ContextCompat.checkSelfPermission(this, TERMUX_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(TERMUX_PERMISSION), 1001)
+        }
+    }
+
     private fun checkStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
@@ -142,6 +154,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendTermuxCommand(command: String) {
+        if (ContextCompat.checkSelfPermission(this, TERMUX_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            checkTermuxPermission()
+            appendLog("[!] يرجى قبول إذن RUN_COMMAND الخاص بـ Termux أولاً.")
+            return
+        }
+
         appendLog("\n[EXEC -> TERMUX] > $command")
         try {
             val intent = Intent("com.termux.RUN_COMMAND").apply {
