@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
 
             if (exitCode == 0) {
                 appendLog("[✓] تمت العملية بنجاح! (Code: 0)")
-                Toast.makeText(this@MainActivity, "تمت العملية بنجاح", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "اكتملت العملية بنجاح", Toast.LENGTH_SHORT).show()
             } else {
                 appendLog("[✗] انتهت العملية بنتيجة (Code: $exitCode)")
             }
@@ -221,7 +221,11 @@ class MainActivity : AppCompatActivity() {
 
         appendLog("\n[EXEC -> TERMUX] > $userCommand")
         try {
-            val resultIntent = Intent(ACTION_RESULT)
+            // التعديل هنا: تحديد وجهة الـ Intent حصراً داخل التطبيق ليتجاوز منع أندرويد 14
+            val resultIntent = Intent(ACTION_RESULT).apply {
+                setPackage(packageName)
+            }
+            
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
             } else {

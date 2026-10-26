@@ -133,3 +133,8 @@ git add .
 git commit -m "Fix repository structure for GitHub Actions"
 git push origin master
 exit
+ls
+cd app
+ls
+clear
+exit
