@@ -3,24 +3,21 @@ package com.yacir.apkcyberstudio
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
+import android.os.Environment
+import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStreamReader
 
 class MainActivity : AppCompatActivity() {
 
@@ -29,18 +26,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var scrollConsole: ScrollView
     private var isDarkMode = true
 
-    private val javaBinary: String
-        get() {
-            val termuxJava = "/data/data/com.termux/files/usr/bin/java"
-            return if (File(termuxJava).exists()) termuxJava else "java"
-        }
-
     private val openFileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.let { uri ->
-                val realPath = copyUriToWorkDir(uri)
-                etPath.setText(realPath)
-                appendLog("[✓] تم جلب الملف: $realPath")
+                try {
+                    val realPath = copyUriToWorkDir(uri)
+                    etPath.setText(realPath)
+                    appendLog("[✓] تم تحديد الملف: $realPath")
+                } catch (e: Exception) {
+                    appendLog("[ERROR] فشل قراءة الملف: ${e.message}")
+                }
             }
         }
     }
@@ -48,6 +43,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        checkStoragePermission()
 
         etPath = findViewById(R.id.etPath)
         tvConsole = findViewById(R.id.tvConsole)
@@ -68,59 +65,74 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnDecompileFull).setOnClickListener {
-            val path = etPath.text.toString()
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
             val out = path.replace(".apk", "_decompiled")
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/apktool.jar d '$path' -o '$out' -f")
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/apktool.jar d '$path' -o '$out' -f")
         }
 
         findViewById<Button>(R.id.btnDecompileSrc).setOnClickListener {
-            val path = etPath.text.toString()
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
             val out = path.replace(".apk", "_src")
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/apktool.jar d -r '$path' -o '$out' -f")
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/apktool.jar d -r '$path' -o '$out' -f")
         }
 
         findViewById<Button>(R.id.btnDecompileRes).setOnClickListener {
-            val path = etPath.text.toString()
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
             val out = path.replace(".apk", "_res")
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/apktool.jar d -s '$path' -o '$out' -f")
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/apktool.jar d -s '$path' -o '$out' -f")
         }
 
         findViewById<Button>(R.id.btnRebuild).setOnClickListener {
-            val path = etPath.text.toString()
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
             val out = "${path}_modded.apk"
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/apktool.jar b '$path' -o '$out'")
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/apktool.jar b '$path' -o '$out'")
         }
 
         findViewById<Button>(R.id.btnSign).setOnClickListener {
-            val path = etPath.text.toString()
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/uber-signer.jar --apks '$path'")
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/uber-signer.jar --apks '$path'")
         }
 
         findViewById<Button>(R.id.btnVerify).setOnClickListener {
-            val path = etPath.text.toString()
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/uber-signer.jar --verify --apks '$path'")
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/uber-signer.jar --verify --apks '$path'")
         }
 
         findViewById<Button>(R.id.btnInstallFw).setOnClickListener {
-            val path = etPath.text.toString()
-            executeCommand("$javaBinary -jar /sdcard/APK_Studio/apktool.jar if '$path'")
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
+            sendTermuxCommand("java -jar /sdcard/APK_Studio/apktool.jar if '$path'")
         }
 
         findViewById<Button>(R.id.btnInstall).setOnClickListener {
-            val path = etPath.text.toString()
-            executeCommand("termux-open '$path'")
+            val path = etPath.text.toString().trim()
+            if (path.isEmpty()) return@setOnClickListener
+            sendTermuxCommand("termux-open '$path'")
+        }
+    }
+
+    private fun checkStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
         }
     }
 
     private fun copyUriToWorkDir(uri: Uri): String {
-        var fileName = "imported_app.apk"
-        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex != -1 && cursor.moveToFirst()) {
-                fileName = cursor.getString(nameIndex)
-            }
-        }
-        val destFile = File("/sdcard/APK_Studio", fileName)
+        val dir = File("/sdcard/APK_Studio")
+        if (!dir.exists()) dir.mkdirs()
+        
+        val destFile = File(dir, "target_app.apk")
         contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(destFile).use { output ->
                 input.copyTo(output)
@@ -129,36 +141,26 @@ class MainActivity : AppCompatActivity() {
         return destFile.absolutePath
     }
 
+    private fun sendTermuxCommand(command: String) {
+        appendLog("\n[EXEC -> TERMUX] > $command")
+        try {
+            val intent = Intent("com.termux.RUN_COMMAND").apply {
+                setClassName("com.termux", "com.termux.app.RunCommandService")
+                putExtra("com.termux.execute.path", "/data/data/com.termux/files/usr/bin/bash")
+                putExtra("com.termux.execute.arguments", arrayOf("-c", command))
+                putExtra("com.termux.execute.background", true)
+            }
+            startService(intent)
+            Toast.makeText(this, "تم إرسال الأمر إلى Termux", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            appendLog("[ERROR] فشل الاتصال بـ Termux: ${e.message}")
+        }
+    }
+
     private fun appendLog(text: String) {
         runOnUiThread {
             tvConsole.append("$text\n")
             scrollConsole.fullScroll(ScrollView.FOCUS_DOWN)
-        }
-    }
-
-    private fun executeCommand(command: String) {
-        appendLog("\n[EXEC] > $command")
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-                var line: String?
-
-                while (reader.readLine().also { line = it } != null) {
-                    appendLog(line!!)
-                }
-
-                val exitCode = process.waitFor()
-                withContext(Dispatchers.Main) {
-                    if (exitCode == 0) {
-                        appendLog("[✓] تمت العملية بنجاح!")
-                    } else {
-                        appendLog("[✗] خطأ أثناء التنفيذ (Code: $exitCode)")
-                    }
-                }
-            } catch (e: Exception) {
-                appendLog("[ERROR] ${e.message}")
-            }
         }
     }
 }
