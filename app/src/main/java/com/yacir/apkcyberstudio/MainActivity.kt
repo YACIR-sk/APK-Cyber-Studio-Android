@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
@@ -37,7 +38,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val realPath = copyUriToWorkDir(uri)
                     etPath.setText(realPath)
-                    appendLog("[✓] تم تحديد الملف: $realPath")
+                    appendLog("[✓] تم جلب الملف بنجاح: $realPath")
                 } catch (e: Exception) {
                     appendLog("[ERROR] فشل قراءة الملف: ${e.message}")
                 }
@@ -143,8 +144,23 @@ class MainActivity : AppCompatActivity() {
     private fun copyUriToWorkDir(uri: Uri): String {
         val dir = File("/sdcard/APK_Studio")
         if (!dir.exists()) dir.mkdirs()
-        
-        val destFile = File(dir, "target_app.apk")
+
+        var fileName = "selected_app.apk"
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                val name = cursor.getString(nameIndex)
+                if (!name.isNullOrEmpty()) {
+                    fileName = name
+                }
+            }
+        }
+
+        if (!fileName.endsWith(".apk", ignoreCase = true)) {
+            fileName = "$fileName.apk"
+        }
+
+        val destFile = File(dir, fileName)
         contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(destFile).use { output ->
                 input.copyTo(output)
@@ -156,22 +172,31 @@ class MainActivity : AppCompatActivity() {
     private fun sendTermuxCommand(command: String) {
         if (ContextCompat.checkSelfPermission(this, TERMUX_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
             checkTermuxPermission()
-            appendLog("[!] يرجى قبول إذن RUN_COMMAND الخاص بـ Termux أولاً.")
+            appendLog("[!] يرجى قبول إذن RUN_COMMAND أولاً.")
             return
+        }
+
+        // إيقاظ وتفعيل Termux تلقائياً لتفادي حظر الخلفية
+        val launchIntent = packageManager.getLaunchIntentForPackage("com.termux")
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launchIntent)
         }
 
         appendLog("\n[EXEC -> TERMUX] > $command")
         try {
             val intent = Intent("com.termux.RUN_COMMAND").apply {
                 setClassName("com.termux", "com.termux.app.RunCommandService")
-                putExtra("com.termux.execute.path", "/data/data/com.termux/files/usr/bin/bash")
-                putExtra("com.termux.execute.arguments", arrayOf("-c", command))
-                putExtra("com.termux.execute.background", true)
+                putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
+                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/sdcard/APK_Studio")
+                putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+                putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0")
             }
             startService(intent)
-            Toast.makeText(this, "تم إرسال الأمر إلى Termux", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "جاري التنفيذ في Termux...", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            appendLog("[ERROR] فشل الاتصال بـ Termux: ${e.message}")
+            appendLog("[ERROR] فشل إرسال الأمر: ${e.message}")
         }
     }
 
