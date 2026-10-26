@@ -1,0 +1,5 @@
+.config/
+.gradle/
+build/
+app/build/
+*.apk
