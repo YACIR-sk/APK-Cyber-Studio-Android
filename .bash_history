@@ -105,3 +105,24 @@ EOF
 
 cd /sdcard/APK_Studio && python apk_cyber_studio.py
 exit
+~/APK-Cyber-Studio-Android
+gh auth login
+git init
+git config user.name "YACIR BEN AISSA"
+git config user.email "your_email@example.com"
+git add .
+git commit -m "Initial commit - APK Cyber Studio Native"
+gh repo create APK-Cyber-Studio-Android --public --source=. --remote=origin --push
+git rm -r --cached .config
+cat << 'EOF' > .gitignore
+.config/
+.gradle/
+build/
+app/build/
+*.apk
+EOF
+
+git add .gitignore
+git commit --amend -m "Initial commit - APK Cyber Studio Native"
+git push -u origin master --force
+exit
